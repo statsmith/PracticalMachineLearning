@@ -1,0 +1,137 @@
+---
+title: "Practical Maching Learning Class Assignment"
+author: "David Smith"
+date: "Monday, August 18, 2014"
+output: html_document
+---
+
+## Summary
+
+A k=10 fold random forest classification model was applied to quantified self movement data to predict the quality of barbell lifts performed by study participants. The model was predicted to have a 0.43% out of sample error rate.  Applying the model to a set of 20 test observations yielded 20 correct out of a total of 20 predictions.
+
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal was to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+
+## Objective
+
+Predict the manner in which participants did barbell lifts 
+
+
+
+## Data Cleaning
+
+First, training data and testing data were downloaded from the following URLs:
+
+* Training:     <https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+* Testing:      <https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+These data sets were loaded into the R session 
+
+```{r GetData}
+train<-read.csv("C:/Users/HFDSS103/Documents/Coursera/Data Science Certification/Practical Machine Learning/CourseProject/pml-training.csv")
+test<-read.csv("C:/Users/HFDSS103/Documents/Coursera/Data Science Certification/Practical Machine Learning/CourseProject/pml-testing.csv")
+```
+
+
+Next, near zero variance variables, variables that contained > 95% NA's, participant ID's, and time variables were removed from the analysis.
+
+```{r RemoveVars}
+# Get Libraries
+library(caret)
+
+# Preprocess data
+        # Remove near zero variance variables
+        nzv<-nearZeroVar(train,saveMetrics=TRUE)
+        keepCol<-rownames(nzv[nzv$nzv==FALSE,])
+        train2<-train[,colnames(train) %in% keepCol]
+
+        # There are multiple columns with 19216 NA's out of a total of 19622
+        # These columns are unlikely to yield anything predictive...
+        # ID columns to keep for analysis
+        myCols<-c()
+        for (i in dim(train2)[2]:1){
+                if(length(which(is.na(train2[[i]])))<19000){
+                        myCols<-c(colnames(train2[i]),myCols)
+                }
+        }
+        
+        # Surely we don't need to know names and user ID's, and time seems irrelevant in predicting classe
+        myCols<-myCols[-c(1:6)]
+        
+        myTrain<-train2[,colnames(train2) %in% myCols]
+```        
+
+
+
+## Cross Validation
+
+Prior to model development, cross validation parameters were set to generate k = 10 fold cross validation.  
+
+```{r CrossValidation}
+
+# Set up cross validation
+myTrainControl <- trainControl(method = "cv",number = 10,repeats = 10)
+
+```
+
+## Model Development
+
+Three different modeling approaches were attempted using the cross validation parameters.
+
+1. A random forest on the raw predictors
+2. A random forest on the PCA pre-processed predictors
+3. A boosted trees (gbm) model on raw predictors
+
+```{r ModelDevelop, cache=TRUE}
+set.seed(20140818)
+rfFitRaw<-train(classe ~ ., method="rf", trControl=myTrainControl, data=myTrain )
+# rfFitPCA<-train(classe ~ ., method="rf", trControl=myTrainControl, preProcess="pca", data=myTrain)
+# gbmFit<-train(classe ~ ., method="gbm", trControl=myTrainControl, data=myTrain)
+
+# rfFitRaw$finalModel
+# rfFitPCA$finalModel
+# gbmFit$finalModel
+
+rfRawPred<-predict(rfFitRaw,myTrain)
+# rfPCAPred<-predict(rfFitPCA,myTrain)
+# gbmPred<-predict(gbmFit,myTrain)
+
+# myPred<-data.frame(cbind(rfRawPred,rfPCAPred,gbmPred,myTrain$classe))
+```
+
+In developing the model, it was determined that a random forest on the raw predictors was the best model. Note: to save time in compiling the R markdown file, only this model was run.  
+
+Prior to applying the model to the test data, the accuracy of the model was evaluated.  Note: the model perfectly predicts the past (i.e. the training set), a clear indication that the model is overfit.  However, the out of sample error rate expected via cross validation is 0.43%.  
+
+```{r ExpectedErrorRate}
+# Check Factor Levels (Labels) vs Factor Values
+table(rfRawPred,myTrain$classe)
+# table(myPred$rfRawPred,myPred$V4)
+# table(myPred$rfPCAPred,myPred$V4)
+# table(myPred$gbmPred,myPred$V4)
+
+# Check Expected Out of Sample Error on rf with raw
+rfFitRaw$finalModel  # Shows 0.43%
+
+```
+
+
+## Model Testing
+
+The final step is to apply the model to the test data. To do so, the testing data must be cleaned using the same pre-processing steps applie to the training data.  Then the model is applied to this data and submitted for valdation.  
+
+```{r Testing}
+        #First clean test data in same manner as training data
+        myTest<-test[,colnames(test) %in% myCols]
+
+        # Apply Model
+        rfRawPredTest<-predict(rfFitRaw, myTest)
+
+        rfRawPredTest
+```
+
+The result of applying this model to the test data yielded 20 out of 20 correct predictions.
+
